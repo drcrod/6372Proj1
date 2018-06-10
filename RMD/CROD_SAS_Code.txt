@@ -1,14 +1,16 @@
 /*SAS Code*/
 
-
+/*Import dataset with formatted columns*/
 data auto;
 infile '/home/carollr0/DataSets/Automobile_data.csv' dlm=',' firstobs=2  ;
-input symboling normalizedlosses make $ fueltype $  aspiration $ numofdoors $  
-bodystyle $ drivewheels $ enginelocation $ wheelbase  length  width 
-height  curbweight enginetype $ numofcylinders $ enginesize fuelsystem $ 
-bore stroke  compressionratio   horsepower  peakrpm    citympg    highwaympg price;
+input symboling 'normalized-losses'n  make $ 'fuel-type'n $  aspiration $ 'num-of-doors'n $   
+'body-style'n $ 'drive-wheels'n $   'engine-location'n $ 'wheel-base'n  length  width   height  
+'curb-weight'n 'engine-type'n $ 'num-of-cylinders'n $ 'engine-size'n 'fuel-system'n $ bore    stroke  
+'compression-ratio'n   horsepower  'peak-rpm'n    'city-mpg'n    'highway-mpg'n price;
 run;
-    proc print data=auto; run;
+
+/*print original data file*/
+proc print data=auto; run;
 
 /*Delete rows with missing data*/
 data auto_clean;
@@ -16,7 +18,8 @@ data auto_clean;
  if nmiss(of _numeric_,1 ) + cmiss( of _character_, '?' ) then delete;
 run;
 
-     proc print data=auto_clean; run;
+/*print cleaned data file*/
+proc print data=auto_clean; run;
 
 /* Export Auto_clean dataset */
 proc export data=auto_clean
