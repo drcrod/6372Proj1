@@ -1,0 +1,28 @@
+/*SAS Code*/
+
+
+data auto;
+infile '/home/carollr0/DataSets/Automobile_data.csv' dlm=',' firstobs=2  ;
+input symboling normalizedlosses make $ fueltype $  aspiration $ numofdoors $  
+bodystyle $ drivewheels $ enginelocation $ wheelbase  length  width 
+height  curbweight enginetype $ numofcylinders $ enginesize fuelsystem $ 
+bore stroke  compressionratio   horsepower  peakrpm    citympg    highwaympg price;
+run;
+    proc print data=auto; run;
+
+/*Delete rows with missing data*/
+data auto_clean;
+ set auto;
+ if nmiss(of _numeric_,1 ) + cmiss( of _character_, '?' ) then delete;
+run;
+
+     proc print data=auto_clean; run;
+
+/* Export Auto_clean dataset */
+proc export data=auto_clean
+            outfile=_dataout
+            dbms=csv replace;
+run;
+
+%let _DATAOUT_MIME_TYPE=text/csv;
+%let _DATAOUT_NAME=auto_clean.csv;
