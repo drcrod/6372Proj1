@@ -1,0 +1,35 @@
+data auto;
+infile '/home/jlingle0/sasuser.v94/6372/Data Files/Automobile_data.csv' dlm=',' firstobs=2;
+
+input symboling normalizedlosses make $ fueltype $ aspiration $ numofdoors $ bodystyle $ drivewheels $ enginelocation $ wheelbase length width height curbweight enginetype $ numofcylinders $ enginesize fuelsystem $ bore stroke compressionratio horsepower peakrpm citympg highwaympg price;
+run;
+
+
+*Calculating a summary stats table and outputing the results in a dataset called "meansout";
+
+data auto2;
+set auto;
+if fueltype = '?' then delete;
+if aspiration = '?' then delete;
+if price = '?' then delete;
+
+run;
+
+ods graphics on;
+proc glm data = auto2 plot=meanplot(cl);
+  class fueltype aspiration;
+  model price = fueltype aspiration fueltype * aspiration;
+  lsmeans fueltype aspiration fueltype * aspiration / pdiff=all adjust=tukey;
+run;
+ods graphics off;
+
+
+
+proc glm data=auto2 PLOTS=(DIAGNOSTICS RESIDUALS);
+class fueltype aspiration;
+model price = fueltype aspiration fueltype * aspiration;
+lsmeans fueltype aspiration fueltype * aspiration / pdiff tdiff adjust=bon;
+estimate 'Diesel vs Gas' fueltype -1 1  /e;
+estimate 'Std vs Turbo aspiration -1 1  /e;
+
+run;
