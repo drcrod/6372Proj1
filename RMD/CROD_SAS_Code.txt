@@ -2,30 +2,60 @@
 
 /*Import dataset with formatted columns*/
 data auto;
-infile '/home/carollr0/DataSets/Automobile_data.csv' dlm=',' firstobs=2  ;
-input symboling 'normalized-losses'n  make $ 'fuel-type'n $  aspiration $ 'num-of-doors'n $   
-'body-style'n $ 'drive-wheels'n $   'engine-location'n $ 'wheel-base'n  length  width   height  
+infile '/home/carollr0/DataSets/Automobile_orig_data.csv' dlm=',' firstobs=2  ;
+input symboling 'normalized-losses'n  make $  'fuel-type'n $  aspiration $ 'num-of-doors'n $   
+'body-style'n $ 'drive-wheels'n  $  'engine-location'n $ 'wheel-base'n  length  width   height  
 'curb-weight'n 'engine-type'n $ 'num-of-cylinders'n $ 'engine-size'n 'fuel-system'n $ bore    stroke  
 'compression-ratio'n   horsepower  'peak-rpm'n    'city-mpg'n    'highway-mpg'n price;
 run;
 
-/*print original data file*/
 proc print data=auto; run;
 
-/*Delete rows with missing data*/
-data auto_clean;
- set auto;
- if nmiss(of _numeric_,1 ) + cmiss( of _character_, '?' ) then delete;
+/*Checking correlated variables. Scatter Plot of numeric variables*/
+options validvarname=any;
+ods noproctitle;
+ods graphics / imagemap=on;
+
+/* Scatter plot matrix macro */
+%macro scatterPlotMatrix(xVars=, title=, groupVar=);
+    proc sgscatter data=WORK.AUTO;
+        matrix &xVars / %if(&groupVar ne %str()) %then
+            %do;
+                group=&groupVar legend=(sortorder=ascending) %end;
+        diagonal=(histogram normal);
+        title &title;
+    run;
+
+    title;
+%mend scatterPlotMatrix;
+
+
+%scatterPlotMatrix(xVars='wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke
+ 'compression-ratio'n horsepower  'peak-rpm'n 'city-mpg'n 'highway-mpg'n, title="Scatter plot matrix", groupVar=);
+
+/*
+#residuals have to be normally distributed but not individual variables in matrix, 
+# now fix any outliers - use proc univariate to point out outliers "Extreme Observations"
+*/
+
+Proc reg data=auto  plots(label)=(rstudentbyleverage cooksd);
+Model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke
+ 'compression-ratio'n horsepower  'peak-rpm'n 'city-mpg'n 'highway-mpg'n; run; quit;
+
+/*#look at VIF*/
+Proc reg data=auto plots(label)=(rstudentleverage cooksd);
+Model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke
+ 'compression-ratio'n horsepower  'peak-rpm'n 'city-mpg'n 'highway-mpg'n / VIF; run; quit;
+
+/*Variable Selection techinques - LARS*/
+Proc glmselect data=auto seed =12;
+Model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke 'compression-ratio'n 
+horsepower  'peak-rpm'n  'highway-mpg'n / selection=LARS ( choose = cv stop = cv) CVDETAILS;
+Run; quit;
+
+/*Variable Selection techinques - LASSO*/
+proc glmselect data = auto plots(stepaxis = number) = (criterionpanel ASEPlot) seed = 1;
+partition fraction(test = .5); 
+model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke 'compression-ratio'n 
+horsepower  'peak-rpm'n  'highway-mpg'n  / selection = lasso( choose = cv stop = cv) CVDETAILS;
 run;
-
-/*print cleaned data file*/
-proc print data=auto_clean; run;
-
-/* Export Auto_clean dataset */
-proc export data=auto_clean
-            outfile=_dataout
-            dbms=csv replace;
-run;
-
-%let _DATAOUT_MIME_TYPE=text/csv;
-%let _DATAOUT_NAME=auto_clean.csv;
