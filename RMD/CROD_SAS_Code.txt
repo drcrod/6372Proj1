@@ -1,24 +1,46 @@
-/*SAS Code*/
-
 /*Import dataset with formatted columns*/
-data auto;
-infile '/home/carollr0/DataSets/Automobile_orig_data.csv' dlm=',' firstobs=2  ;
-input symboling 'normalized-losses'n  make $  'fuel-type'n $  aspiration $ 'num-of-doors'n $   
-'body-style'n $ 'drive-wheels'n  $  'engine-location'n $ 'wheel-base'n  length  width   height  
-'curb-weight'n 'engine-type'n $ 'num-of-cylinders'n $ 'engine-size'n 'fuel-system'n $ bore    stroke  
-'compression-ratio'n   horsepower  'peak-rpm'n    'city-mpg'n    'highway-mpg'n price;
+FILENAME REFFILE '/home/carollr0/DataSets/Automobile_data.csv';
+
+PROC IMPORT DATAFILE=REFFILE DBMS=CSV OUT=WORK.AUTO;
+    GETNAMES=YES;
+    GUESSINGROWS=260; RUN;
+
+PROC CONTENTS DATA=WORK.AUTO;
+RUN;
+
+%web_open_table(WORK.AUTO);
+
+/*Remove Normalized Losses feature - too many missing data points, not reliable*/
+data auto2;
+set auto;
+keep symboling make    fueltype    aspiration  numofdoors  bodystyle   drivewheels enginelocation  wheelbase 
+length  width   height  curbweight  enginetype  numofcylinders  enginesize  fuelsystem  bore    stroke  compressionratio 
+horsepower  peakrpm citympg highwaympg price
+;
 run;
 
-proc print data=auto; run;
+proc print data=auto2;
+run;
 
-/*Checking correlated variables. Scatter Plot of numeric variables*/
+/*Descriptive Stats on Orignal Data*/
+    ods noproctitle;
+    ods graphics / imagemap=on;
+    
+    proc means data=auto2 chartype mean std min max n nmiss vardef=df;
+        var symboling wheelbase length width height curbweight 
+            enginesize bore stroke compressionratio horsepower peakrpm citympg highwaympg 
+            price;
+    run;
+
+/*Plot all numeric variables against each other
+*/
 options validvarname=any;
 ods noproctitle;
 ods graphics / imagemap=on;
 
 /* Scatter plot matrix macro */
 %macro scatterPlotMatrix(xVars=, title=, groupVar=);
-    proc sgscatter data=WORK.AUTO;
+    proc sgscatter data=auto2;
         matrix &xVars / %if(&groupVar ne %str()) %then
             %do;
                 group=&groupVar legend=(sortorder=ascending) %end;
@@ -29,33 +51,129 @@ ods graphics / imagemap=on;
     title;
 %mend scatterPlotMatrix;
 
+%scatterPlotMatrix(xVars= symboling  wheelbase length width 
+    height curbweight enginesize bore stroke compressionratio horsepower peakrpm 
+    citympg highwaympg price, title="Original Dataset - Scatter plot matrix", 
+    groupVar=);
 
-%scatterPlotMatrix(xVars='wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke
- 'compression-ratio'n horsepower  'peak-rpm'n 'city-mpg'n 'highway-mpg'n, title="Scatter plot matrix", groupVar=);
+proc corr data=auto2 plots=matrix (histogram);
+run;
+
+/*Delete all rows with missing data - 195 records left*/
+data auto_clean;
+    set auto2;
+    if nmiss(of _numeric_, 1) + cmiss(of _character_, '?') then
+        delete;
+run;
+
+proc print data=auto_clean;
+run;
+
+/*Descriptive Stats on Clean Data */
+    ods noproctitle;
+    ods graphics / imagemap=on;
+    
+    proc means data=AUTO_CLEAN n nmiss chartype mean std min max  vardef=df;
+        var symboling wheelbase length width height curbweight 
+            enginesize bore stroke compressionratio horsepower peakrpm citympg highwaympg 
+            ;
+run;
+/*Plot all numeric variables against each other*/
+options validvarname=any;
+ods noproctitle;
+ods graphics / imagemap=on;
+
+/* Scatter plot matrix macro */
+%macro scatterPlotMatrix(xVars=, title=, groupVar=);
+    proc sgscatter data=WORK.AUTO_Clean;
+        matrix &xVars / %if(&groupVar ne %str()) %then
+            %do;
+                group=&groupVar legend=(sortorder=ascending) %end;
+        diagonal=(histogram normal);
+        title &title;
+    run;
+
+    title;
+%mend scatterPlotMatrix;
+
+%scatterPlotMatrix(xVars=symboling  wheelbase length width 
+    height curbweight enginesize bore stroke compressionratio horsepower peakrpm 
+    citympg highwaympg price, title="Clean Dataset - Scatter plot matrix", 
+    groupVar=);
+
+proc corr data=auto_clean plots=matrix (histogram);
+run;
+
+/*Descriptive Stats on Deleted Data*/
+/*Plot all numeric variables against each other*/
+    /*Data set created - Deleted rows with missing data*/
+    data auto_clean_missing;
+        set auto2;
+        if nmiss(of _numeric_, 1) + cmiss(of _character_, '?') then output;
+    run;
+    
+    
+    /*Descriptive Statistics for Numeric Variables*/
+    ods noproctitle;
+    ods graphics / imagemap=on;
+    
+    proc means data=auto_clean_missing chartype n nmiss mean std min max  vardef=df;
+        var symboling wheelbase length width height curbweight 
+            enginesize bore stroke compressionratio horsepower peakrpm citympg highwaympg 
+            price;
+run;
+
+options validvarname=any;
+ods noproctitle;
+ods graphics / imagemap=on;
+
+/* Scatter plot matrix macro */
+%macro scatterPlotMatrix(xVars=, title=, groupVar=);
+    proc sgscatter data=WORK.auto_clean_missing;
+        matrix &xVars / %if(&groupVar ne %str()) %then
+            %do;
+                group=&groupVar legend=(sortorder=ascending) %end;
+        diagonal=(histogram normal);
+        title &title;
+    run;
+
+    title;
+%mend scatterPlotMatrix;
+
+%scatterPlotMatrix(xVars=symboling wheelbase length width height curbweight 
+    enginesize bore stroke compressionratio horsepower peakrpm citympg highwaympg 
+    price, title="Deleted Records - Scatter plot matrix", groupVar=);
+
+proc corr data=auto_clean_missing plots=matrix (histogram);
+run;
+
 
 /*
-#residuals have to be normally distributed but not individual variables in matrix, 
+#residuals have to be normally distributed but not individual variables in matrix,
 # now fix any outliers - use proc univariate to point out outliers "Extreme Observations"
-*/
+M1*/
+Proc reg data=auto_clean plots(label)=(rstudentbyleverage cooksd);
+/*class     make fueltype aspiration  numofdoors  bodystyle   drivewheels enginelocation enginetype  numofcylinders fuelsystem;*/
+    Model price = symboling wheelbase   length  width   height  curbweight    enginesize    bore    stroke  compressionratio    
+    horsepower  peakrpm citympg highwaympg /VIF ;
+    run;
+quit;
 
-Proc reg data=auto  plots(label)=(rstudentbyleverage cooksd);
-Model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke
- 'compression-ratio'n horsepower  'peak-rpm'n 'city-mpg'n 'highway-mpg'n; run; quit;
 
-/*#look at VIF*/
-Proc reg data=auto plots(label)=(rstudentleverage cooksd);
-Model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke
- 'compression-ratio'n horsepower  'peak-rpm'n 'city-mpg'n 'highway-mpg'n / VIF; run; quit;
 
 /*Variable Selection techinques - LARS*/
-Proc glmselect data=auto seed =12;
-Model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke 'compression-ratio'n 
-horsepower  'peak-rpm'n  'highway-mpg'n / selection=LARS ( choose = cv stop = cv) CVDETAILS;
-Run; quit;
+Proc glmselect data=auto seed=12;
+    Class make fueltype aspiration  numofdoors  bodystyle   drivewheels enginelocation enginetype  numofcylinders fuelsystem;
+    Model price= symboling wheelbase   length  width   height  curbweight    enginesize    bore    stroke  compressionratio    
+    horsepower  peakrpm citympg highwaympg / selection=LARS (choose=cv stop=cv) CVDETAILS;
+Run;
+
+quit;
 
 /*Variable Selection techinques - LASSO*/
-proc glmselect data = auto plots(stepaxis = number) = (criterionpanel ASEPlot) seed = 1;
-partition fraction(test = .5); 
-model price = 'wheel-base'n  length  width   height 'curb-weight'n 'engine-size'n bore stroke 'compression-ratio'n 
-horsepower  'peak-rpm'n  'highway-mpg'n  / selection = lasso( choose = cv stop = cv) CVDETAILS;
+proc glmselect data=auto plots(stepaxis=number)=(criterionpanel ASEPlot) seed=1;
+    partition fraction(test=.5);
+    Model price= symboling wheelbase   length  width   height  curbweight    enginesize    bore    stroke  compressionratio    
+    horsepower  peakrpm citympg highwaympg / 
+        selection=lasso(choose=cv stop=cv) CVDETAILS;
 run;
