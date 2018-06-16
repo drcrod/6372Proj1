@@ -224,3 +224,144 @@ output out = resultsC p=Predicted;
 run;
 
 proc means data=work.auto_remobs; run;
+
+
+
+/***********************************************************/
+/*Cross Validation
+Cross-validation: method to try to determine if a model will have 
+good predictive ability, even without a second set of data
+Leave K out of validation (use for smaller data sets)
+Options: 
+1. Test set is preferred when a large number of observations, 
+so that test set represents population well.
+2. Leave one out is most computationally intensive.
+3. Split and block requires that test sets are representative 
+of population (no intrinsic order in data).
+4. Random may lead to two different researchers producing two 
+different models on the same data.
+*/
+
+/*Import dataset with formatted columns*/
+data auto;
+    infile '/home/carollr0/DataSets/Automobile_data.csv' dlm=',' firstobs=2;
+    input symboling make $  fueltype $  aspiration $ numofdoors $   
+    bodystyle $ drivewheels  $  enginelocation $ wheelbase length width 
+        height curbweight enginetype $ /*numofcylinders $ */ enginesize fuelsystem $ bore 
+        stroke compressionratio horsepower peakrpm citympg highwaympg price;
+run;
+
+/*Remove Normalized Losses feature - too many missing data points, not reliable*/
+data auto2;
+    set auto;
+    keep symboling make fueltype aspiration  numofdoors    
+    bodystyle  drivewheels    enginelocation  wheelbase length width 
+        height curbweight enginetype  numofcylinders  enginesize fuelsystem  bore 
+        stroke compressionratio horsepower peakrpm citympg highwaympg price; 
+run;
+
+/* Use the reserved word _NUMERIC_ to load all numeric variables  */
+/* into the NUM array.  Use the reserved word _CHARACTER_ to      */ 
+/* to load all character variables into the CHR array.            */
+
+data nomiss;                    
+set auto;   
+array _ALL_ _character_;
+array _ALL_ _numeric_  ;    
+
+/* Check for missing values and delete when found. */ 
+
+do i = 1 to dim(_ALL_);          
+ if missing(_ALL_(i)) then delete;    
+end;                            
+drop i;  
+run;
+ 
+proc print data=nomiss;                     
+run;                
+
+/*Observations 47 is shown to be leverage and outliers. This observations will be removed.*/
+data auto_remobs;
+set work.nomiss;
+if _N_=46  then delete;
+run;
+quit;
+
+/*Leave one out CV 
+Effects:    Intercept width enginesize stroke compressionratio horsepower peakrpm
+Root MSE    3026.09372
+Dependent Mean  13131
+R-Square    0.8581
+Adj R-Sq    0.8536
+AIC 3312.70140
+AICC    3313.47978
+PRESS   1873371303
+SBC 3139.57641
+*/
+proc glmselect data=work.nomiss;
+model price = symboling wheelbase length width height curbweight enginesize bore 
+        stroke compressionratio horsepower peakrpm citympg highwaympg / 
+        selection=stepwise(stop=press);
+run;
+
+
+/*larger press--->increase bias, decease in variablility-fairly stable model
+/*10 fold Cross Validation
+Effects:    Intercept width enginesize stroke compressionratio horsepower peakrpm
+Root MSE    3026.09372
+Dependent Mean  13131
+R-Square    0.8581
+Adj R-Sq    0.8536
+AIC 3312.70140
+AICC    3313.47978
+SBC 3139.57641
+CV PRESS    2002069260
+*/
+proc glmselect data=work.nomiss;
+model price = symboling wheelbase length width height curbweight enginesize bore 
+        stroke compressionratio horsepower peakrpm citympg highwaympg / 
+        selection=stepwise(choose=cv) ;
+run;
+
+/*5 fold Cross Validation 1/5 of obs will be taken out at a time to test
+Effects:    Intercept width enginesize stroke compressionratio horsepower peakrpm
+Root MSE    3026.09372
+Dependent Mean  13131
+R-Square    0.8581
+Adj R-Sq    0.8536
+AIC 3312.70140
+AICC    3313.47978
+SBC 3139.57641
+CV PRESS    1871729861
+*/
+proc glmselect data=work.nomiss;
+model price = symboling wheelbase length width height curbweight enginesize bore 
+        stroke compressionratio horsepower peakrpm citympg highwaympg / 
+        selection=forward(choose=cv) CVMETHOD=random(5);
+run;
+
+/*Using a stopping criterion, by default SAS does a 5fold cross validation (1/5 of the data at random=CVMETHOD=random(10)), effect that gives the best value of the criterion
+Effects:    Intercept width enginesize stroke compressionratio horsepower peakrpm
+Root MSE    3026.09372
+Dependent Mean  13131
+R-Square    0.8581
+Adj R-Sq    0.8536
+AIC 3312.70140
+AICC    3313.47978
+SBC 3139.57641
+CV PRESS    1938077509
+*/
+proc glmselect data=work.nomiss;
+model price = symboling wheelbase length width height curbweight enginesize bore 
+        stroke compressionratio horsepower peakrpm citympg highwaympg / 
+        selection=stepwise(stop=cv);
+run;
+
+/*all 3 cross validation methods end up with the same model each time*/
+
+/*Check*/
+proc glm data=work.nomiss plots=all;
+Model price= width enginesize stroke compressionratio horsepower peakrpm/ cli solution;
+output out = resultsC p=Predicted;
+run;
+
